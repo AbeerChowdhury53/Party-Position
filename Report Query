@@ -1,0 +1,96 @@
+WITH base_data AS (
+    SELECT
+        company,
+        ac_code,
+        sub_code,
+
+        SUM(
+            CASE
+                WHEN TRUNC(tran_date) <= TO_DATE(:start_date, 'DD/MM/RRRR') - 1
+                THEN NVL(dr,0) - NVL(cr,0)
+                ELSE 0
+            END
+        ) opening,
+
+        SUM(
+            CASE
+                WHEN TRUNC(tran_date)
+                     BETWEEN TO_DATE(:start_date, 'DD/MM/RRRR')
+                     AND TO_DATE(:end_date, 'DD/MM/RRRR')
+                THEN NVL(dr,0)
+                ELSE 0
+            END
+        ) dr,
+
+        SUM(
+            CASE
+                WHEN TRUNC(tran_date)
+                     BETWEEN TO_DATE(:start_date, 'DD/MM/RRRR')
+                     AND TO_DATE(:end_date, 'DD/MM/RRRR')
+                THEN NVL(cr,0)
+                ELSE 0
+            END
+        ) cr
+
+    FROM transaction
+    WHERE ac_code = NVL(:ac_code, ac_code)
+      AND sub_code = NVL(:sub_code, sub_code)
+      AND sub_sub_code = NVL(:sub_sub_code, sub_sub_code)
+
+    GROUP BY company, ac_code, sub_code
+)
+
+SELECT
+    z.zone_code z,
+    TO_NUMBER(SUBSTR(b.sub_code,4)) sub_code,
+    b.ac_code,
+
+    get_zone_name(z.zone_code) zone_name,
+    z.sub_head,
+
+    /* QDL */
+    SUM(CASE WHEN b.company = 1 THEN opening ELSE 0 END) qdl_opening,
+    SUM(CASE WHEN b.company = 1 THEN dr ELSE 0 END) qdl_dr,
+    SUM(CASE WHEN b.company = 1 THEN cr ELSE 0 END) qdl_cr,
+    SUM(CASE WHEN b.company = 1 THEN opening + dr - cr ELSE 0 END) qdl_balance,
+
+    /* FOOD */
+    SUM(CASE WHEN b.company = 4 THEN opening ELSE 0 END) food_opening,
+    SUM(CASE WHEN b.company = 4 THEN dr ELSE 0 END) food_dr,
+    SUM(CASE WHEN b.company = 4 THEN cr ELSE 0 END) food_cr,
+    SUM(CASE WHEN b.company = 4 THEN opening + dr - cr ELSE 0 END) food_balance,
+
+    /* LAMPS */
+    SUM(CASE WHEN b.company = 3 THEN opening ELSE 0 END) lamps_opening,
+    SUM(CASE WHEN b.company = 3 THEN dr ELSE 0 END) lamps_dr,
+    SUM(CASE WHEN b.company = 3 THEN cr ELSE 0 END) lamps_cr,
+    SUM(CASE WHEN b.company = 3 THEN opening + dr - cr ELSE 0 END) lamps_balance,
+
+    /* STSL */
+    SUM(CASE WHEN b.company = 6 THEN opening ELSE 0 END) stsl_opening,
+    SUM(CASE WHEN b.company = 6 THEN dr ELSE 0 END) stsl_dr,
+    SUM(CASE WHEN b.company = 6 THEN cr ELSE 0 END) stsl_cr,
+    SUM(CASE WHEN b.company = 6 THEN opening + dr - cr ELSE 0 END) stsl_balance,
+
+    /* TOTAL */
+    SUM(opening + dr - cr) total_balance
+
+FROM base_data b
+JOIN sub_code z
+    ON b.sub_code = z.sub_code
+
+WHERE z.company = '1'
+  AND z.ac_code = '306000'
+  AND (
+        INSTR(':' || :zone_code || ':',
+              ':' || z.zone_code || ':') > 0
+        OR :zone_code IS NULL
+      )
+
+GROUP BY
+    z.zone_code,
+    b.sub_code,
+    b.ac_code,
+    z.sub_head
+
+ORDER BY 1,2;
